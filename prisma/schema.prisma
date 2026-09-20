@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Hierarchy & Facilities ──────────────────────────────────────
+
+model Facility {
+  id              String       @id @default(uuid())
+  name            String
+  type            String       // e.g. "STATE", "DISTRICT", "BLOCK", "PHC", "SUBCENTRE"
+  
+  // Self-referencing hierarchy
+  parentId        String?
+  parent          Facility?    @relation("FacilityHierarchy", fields: [parentId], references: [id])
+  children        Facility[]   @relation("FacilityHierarchy")
+  
+  externalId      String?      @unique
+  metadata        String?      // Storing JSON as string for SQLite compatibility
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  lastSeenAt      DateTime?
+
+  users           User[]
+  stock           FacilityStock[]
+  fieldReports    FieldReport[]
+  alerts          Alert[]
+  forecasts       ForecastSnapshot[]
+  transfersOut    Transfer[]   @relation("SourceFacility")
+  transfersIn     Transfer[]   @relation("DestinationFacility")
+  inventoryEvents InventoryEvent[]
+}
+
+// ─── Users & Roles ───────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  employeeId   String    @unique
+  name         String
+  role         String    // e.g. "SUPER_ADMIN", "DISTRICT_OFFICER", "PHC_ADMIN", "FIELD_WORKER", "AUDITOR"
+  roleLabel    String
+  passwordHash String
+  
+  facilityId   String
+  facility     Facility  @relation(fields: [facilityId], references: [id])
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  inventoryEvents InventoryEvent[]
+  proposedTransfers Transfer[] @relation("ProposerUser")
+  approvedTransfers Transfer[] @relation("ApproverUser")
+  fieldReports      FieldReport[]
+  auditLogs         AuditLog[]
+}
+
+// ─── Inventory & Medicines ───────────────────────────────────────
+
+model Medicine {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  unit             String
+  defaultBuffer    Int      @default(0)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  facilityStocks   FacilityStock[]
+  inventoryEvents  InventoryEvent[]
+  transfers        Transfer[]
+  alerts           Alert[]
+  forecasts        ForecastSnapshot[]
+  batches          Batch[]
+}
+
+model FacilityStock {
+  id               String   @id @default(uuid())
+  facilityId       String
+  medicineId       String
+  
+  stockBalance     Int
+  safetyBuffer     Int
+  
+  lastUpdated      DateTime @updatedAt
+
+  facility         Facility @relation(fields: [facilityId], references: [id])
+  medicine         Medicine @relation(fields: [medicineId], references: [id])
+
+  @@unique([facilityId, medicineId])
+}
+
+model Batch {
+  id               String   @id @default(uuid())
+  batchNumber      String
+  expiryDate       DateTime
+  quantity         Int
+  
+  medicineId       String
+  medicine         Medicine @relation(fields: [medicineId], references: [id])
+  
+  createdAt        DateTime @default(now())
+  
+  @@unique([batchNumber, medicineId])
+}
+
+// ─── Events & Reports ────────────────────────────────────────────
+
+model InventoryEvent {
+  id          String   @id @default(uuid())
+  type        String
+  quantity    Int
+  reason      String?
+  timestamp   DateTime @default(now())
+  
+  facilityId  String
+  facility    Facility @relation(fields: [facilityId], references: [id])
+  
+  medicineId  String
+  medicine    Medicine @relation(fields: [medicineId], references: [id])
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  referenceId String?
+}
+
+model FieldReport {
+  id          String   @id @default(uuid())
+  facilityId  String
+  facility    Facility @relation(fields: [facilityId], references: [id])
+  
+  reporterId  String
+  reporter    User     @relation(fields: [reporterId], references: [id])
+  
+  audioUrl    String?
+  transcript  String?
+  structuredData String? // JSON as String
+  
+  createdAt   DateTime @default(now())
+}
+
+model Alert {
+  id          String        @id @default(uuid())
+  type        String
+  severity    String
+  description String
+  status      String        @default("ACTIVE")
+  
+  facilityId  String
+  facility    Facility      @relation(fields: [facilityId], references: [id])
+  
+  medicineId  String?
+  medicine    Medicine?     @relation(fields: [medicineId], references: [id])
+  
+  createdAt   DateTime      @default(now())
+  resolvedAt  DateTime?
+}
+
+model ForecastSnapshot {
+  id            String   @id @default(uuid())
+  facilityId    String
+  facility      Facility @relation(fields: [facilityId], references: [id])
+  
+  medicineId    String
+  medicine      Medicine @relation(fields: [medicineId], references: [id])
+  
+  daysRemaining Int
+  status        String
+  timestamp     DateTime @default(now())
+}
+
+// ─── Transfers & Exceptions ──────────────────────────────────────
+
+model Transfer {
+  id                 String         @id @default(uuid())
+  
+  sourceFacilityId   String
+  sourceFacility     Facility       @relation("SourceFacility", fields: [sourceFacilityId], references: [id])
+  
+  destFacilityId     String
+  destFacility       Facility       @relation("DestinationFacility", fields: [destFacilityId], references: [id])
+  
+  medicineId         String
+  medicine           Medicine       @relation(fields: [medicineId], references: [id])
+  
+  quantity           Int
+  status             String         @default("PROPOSED")
+  
+  proposerId         String
+  proposer           User           @relation("ProposerUser", fields: [proposerId], references: [id])
+  
+  approverId         String?
+  approver           User?          @relation("ApproverUser", fields: [approverId], references: [id])
+  
+  discrepancyReason  String?
+  
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  events             TransferEvent[]
+}
+
+model TransferEvent {
+  id            String   @id @default(uuid())
+  transferId    String
+  transfer      Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  
+  type          String
+  actorId       String
+  facility      String
+  entity        String
+  quantity      Int
+  status        String
+  correlationId String
+  timestamp     DateTime @default(now())
+  payload       String?  // JSON string
+  previousHash  String
+  hash          String
+}
+
+// ─── Immutable Audit Trail ───────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  action        String
+  entityName    String
+  entityId      String
+  
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  role          String
+  
+  changesBefore String   // JSON string
+  changesAfter  String   // JSON string
+  
+  correlationId String
+  previousHash  String
+  hash          String
+  
+  timestamp     DateTime @default(now())
+}
