@@ -88,5 +88,5 @@ We have successfully transformed this conceptual architecture into a **working, 
 ---
 
 **Project Context:**
-- Hack2Skill Hack AI: [https://hack2skill.com/hack/hack-ai](https://hack2skill.com/hack/hack-ai)
-- Build with AI: [https://buildwithai.devaarambh.com/](https://buildwithai.devaarambh.com/)
+- **Hackathon:** Code for Communities (Hack2Skill)
+- **Link:** [https://hack2skill.com/event/codeforcommunities2](https://hack2skill.com/event/codeforcommunities2)
