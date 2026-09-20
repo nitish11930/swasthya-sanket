@@ -87,6 +87,7 @@ import { authConfig } from "./auth.config";
 
 // ─── NextAuth handler ──────────────────────────────────────────
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: process.env.AUTH_SECRET || "hackathon-demo-secret-key-swasthya-sanket",
   ...authConfig,
   providers: [
     Credentials({
